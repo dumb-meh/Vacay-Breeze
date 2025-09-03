@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    container_name: vacay_breeze_app
+    expose:
+      - "9073"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    networks:
+      - vacay_breeze_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9073/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: vacay_breeze_nginx
+    ports:
+      - "9074:9074"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vacay_breeze_network
+
+networks:
+  vacay_breeze_network:
+    driver: bridge
