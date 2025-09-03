@@ -7,8 +7,8 @@ from app.services.regenerate_plan.regenerate_plan_route import router as regener
 
 
 app = FastAPI(
-    title="Study Buddy AI",
-    description="An AI-powered learning companion for ADHD-friendly study tools",
+    title="Vacay Breeze AI",
+    description="An AI-powered travel planning companion",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -47,6 +47,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 
-        port=9013, 
+        port=9073, 
         reload=True
     )

@@ -2,7 +2,7 @@ import os
 import json
 import openai
 from dotenv import load_dotenv
-from .regenerate_plan_schema import regenerate_plan_response,regenerate_plan_request
+from .regenerate_plan_schema import regenerate_plan_response, regenerate_plan_request
 
 load_dotenv()
 
@@ -10,10 +10,14 @@ class RegeneratePlan:
     def __init__(self):
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
-    def regenerate_plan (self, input_data=regenerate_plan_request) -> regenerate_plan_response:
+    def regenerate_plan(self, input_data: regenerate_plan_request) -> regenerate_plan_response:
+        self.current_plan = input_data.current_plan
+        self.user_change = input_data.user_change
+        self.place = input_data.place
+        
         prompt = self.create_prompt()
-        response = self.get_openai_response(prompt, input_data)
-        return response
+        response = self.get_openai_response(prompt, str(input_data.dict()))
+        return regenerate_plan_response(updated_plan=response)
     
     def create_prompt(self) -> str:
         return f"""You are an expert travel planner specializing in modifying and improving travel itineraries based on user feedback. A traveler wants to change a specific part of their itinerary.
@@ -87,13 +91,11 @@ class RegeneratePlan:
                 - Provide realistic timing and practical advice
                 - Consider the flow of the entire day when making suggestions"""
     
-    def get_openai_response(self, prompt: str, data: str) -> regenerate_plan_response:
+    def get_openai_response(self, prompt: str, data: str) -> str:
         completion = self.client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}, {"role": "user", "content": data}],
             temperature=0.7            
         )
         raw_content = completion.choices[0].message.content.strip()
-        
-    
-        return 
+        return raw_content
