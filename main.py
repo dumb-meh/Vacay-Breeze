@@ -2,13 +2,9 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.services.affirmation.affirmation_route import router as affirmation_router
-from app.services.empowerment.empowerment_route import router as empowerment_router
-from app.services.flashcard_quiz.flashcard_quiz_route import router as flashcard_quiz_router
-from app.services.mnemonic.mnemonic_route import router as mnemonic_router
-from app.services.story.story_route import router as story_router
-from app.services.summary.summary_route import router as summary_router
-from app.services.task_suggestion.task_suggestion_route import router as task_suggestion_router
+from app.services.ai_suggestion.ai_suggestion_route import router as ai_suggestion_router
+from app.services.regenerate_plan.regenerate_plan_route import router as regenerate_plan_router
+
 
 app = FastAPI(
     title="Study Buddy AI",
@@ -26,19 +22,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(affirmation_router, tags=["Affirmation"])
-app.include_router(empowerment_router, tags=["Empowerment"])
-app.include_router(flashcard_quiz_router, tags=["Flashcard Quiz"])
-app.include_router(mnemonic_router, tags=["Mnemonic"])
-app.include_router(story_router, tags=["Story"])
-app.include_router(summary_router, tags=["Summary"])
-app.include_router(task_suggestion_router, tags=["Task Suggestion"])
+app.include_router(ai_suggestion_router, tags=["AI Suggestion"])
+app.include_router(regenerate_plan_router, tags=["Regenerate Plan"])
+
 
 @app.get("/", tags=["Health"])
 async def root():
     """Root endpoint for health checks"""
     return {
-        "message": "Welcome to the Study Buddy AI!",
+        "message": "Welcome to the Vacay Breeze AI!",
         "status": "healthy",
         "version": "1.0.0"
     }
@@ -48,7 +40,7 @@ async def health_check():
     """Health check endpoint for Docker/monitoring"""
     return {
         "status": "healthy",
-        "service": "Study Buddy AI"
+        "service": "Vacay Breeze AI"
     }
 
 if __name__ == "__main__":
