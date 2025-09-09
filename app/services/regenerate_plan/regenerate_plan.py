@@ -11,7 +11,7 @@ class RegeneratePlan:
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     def regenerate_plan(self, input_data: regenerate_plan_request) -> regenerate_plan_response:
-        self.current_plan = input_data.current_plan
+        self.current_plan = input_data.current_itinerary
         self.user_change = input_data.user_change
         self.place = input_data.place
         
@@ -23,7 +23,7 @@ class RegeneratePlan:
         return f"""You are an expert travel planner specializing in modifying and improving travel itineraries based on user feedback. A traveler wants to change a specific part of their itinerary.
 
                 CURRENT ITINERARY:
-                {self.current_plan}
+                {self.current_itinerary}
 
                 USER REQUESTED CHANGE:
                 {self.user_change}
