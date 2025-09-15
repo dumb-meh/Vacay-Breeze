@@ -1,8 +1,9 @@
 import os
 import json
 import openai
+from uuid import uuid4
 from dotenv import load_dotenv
-from .ai_suggestion_schema import ai_suggestion_response, ai_suggestion_request
+from .ai_suggestion_schema import ai_suggestion_response, ai_suggestion_request, ItineraryData
 import datetime
 
 load_dotenv()
@@ -10,76 +11,117 @@ class AISuggestion:
     def __init__(self):
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
+    
+
     def get_suggestion(self, input_data: ai_suggestion_request) -> ai_suggestion_response:
         self.departure_date = input_data.departure_date
         self.return_date = input_data.return_date
-                     
+
         prompt = self.create_prompt(input_data)
         data = str(input_data.dict())
-        response = self.get_openai_response(prompt, data)
-        return ai_suggestion_response(response=response)
+        raw_response = self.get_openai_response(prompt, data)
+        print(raw_response)
+
+        try:
+            parsed_data = json.loads(raw_response)  # GPT must return valid JSON
+        except json.JSONDecodeError:
+            raise ValueError("Failed to parse GPT response as JSON")
+
+        itinerary_data = ItineraryData(
+            itinerary_id=str(uuid4()),
+            status=parsed_data.get("status", "complete"),
+            days=parsed_data["days"]
+        )
+
+        return ai_suggestion_response(
+            success=True,
+            message="Itinerary generated successfully.",
+            data=itinerary_data
+        )
+
     
     def create_prompt(self, input_data: ai_suggestion_request) -> str:
-        return f"""You are an expert travel planner specializing in creating detailed, personalized itineraries. Based on the provided travel preferences, create a comprehensive day-by-day travel plan.
+        return f"""You are an expert travel planner specializing in creating detailed, personalized travel itineraries.
 
-                    TRAVEL DETAILS:
-                    - Travelers: {input_data.total_adults} adults, {input_data.total_children} children (under 12)
-                    - Destination: {input_data.destination}
-                    - Current Location: {input_data.location}
-                    - Departure Date: {input_data.departure_date}
-                    - Return Date: {input_data.return_date}
-                    - Trip Duration: {self.calculate_trip_days()} days
+    Given the traveler's preferences below, generate a structured itinerary in **valid JSON format only**.
 
-                    ACCOMMODATION PREFERENCES:
-                    Amenities Required: {input_data.amenities}
+    ---
 
-                    ACTIVITY PREFERENCES:
-                    Preferred Activities: {input_data.activities}
+    **TRAVEL DETAILS**
+    - Travelers: {input_data.total_adults} adults, {input_data.total_children} children (under 12)
+    - Destination: {input_data.destination}
+    - Departure City: {input_data.location}
+    - Departure Date: {input_data.departure_date}
+    - Return Date: {input_data.return_date}
+    - Trip Duration: {self.calculate_trip_days()} days
 
-                    VACATION PACE:
-                    {input_data.pacing}
+    **ACCOMMODATION & AMENITIES**
+    - Amenities Required: {', '.join(input_data.amenities)}
 
-                    DINING PREFERENCES:
-                    Food Experience: {input_data.food}
+    **ACTIVITY PREFERENCES**
+    - Preferred Activities: {', '.join(input_data.activities)}
 
-                    SPECIAL REQUIREMENTS:
-                    {input_data.special_notes if input_data.special_notes else 'None'}
+    **VACATION PACE**
+    - {', '.join(input_data.pacing)}
 
-                    INSTRUCTIONS:
-                    1. Create a detailed day-by-day itinerary using a consistent structured format.
-                    2. Each activity should include the time, title, description, and place.
-                    3. Consider the vacation pace and group size (including children) when planning.
-                    4. Incorporate preferred activities, amenities, and food experiences.
-                    5. Include real establishments where possible (hotels, restaurants, attractions).
-                    6. Include travel time between locations and allow downtime where needed.
-                    7. Suggest indoor backup activities in case of bad weather.
-                    9. STRICTLY FOLLOW THE FORMAT below — DO NOT use paragraphs or markdown.
+    **FOOD PREFERENCES**
+    - Cuisine/Experience: {', '.join(input_data.food)}
 
-                    OUTPUT FORMAT:
+    **SPECIAL REQUIREMENTS**
+    - {input_data.special_notes if input_data.special_notes else 'None'}
 
-                    **Day 1 ({input_data.departure_date}):**
-                    [
-                    {{
-                        "time": "9:00 AM",
-                        "title": "Flight Departure",
-                        "description": "Depart from {input_data.location} on a non-stop flight to {input_data.destination}. Ensure wheelchair assistance if needed.",
-                        "place": "{input_data.location} Airport"
-                    }},
-                    {{
-                        "time": "12:00 PM",
-                        "title": "Hotel Check-in",
-                        "description": "Check in at a hotel with required amenities (e.g., pool, outdoor space, parking).",
-                        "place": "Example Hotel Name"
-                    }},
-                    {{
-                        "time": "1:00 PM",
-                        "title": "Lunch at Local Spot",
-                        "description": "Enjoy a family-friendly lunch featuring {input_data.food.lower()}.",
-                        "place": "Example Restaurant Name"
-                    }}
-                    ]
+    ---
 
-                    [Repeat this format through Day {self.calculate_trip_days()} ({input_data.return_date})] """
+    **OUTPUT INSTRUCTIONS**
+    - Output must be valid JSON. Do not use markdown formatting, explanations, or natural language outside of the JSON.
+    - Each day's entry must include:
+        - `day_number`: integer
+        - `date`: in YYYY-MM-DD format
+        - `activities`: a list of structured activities
+    - Each activity must include:
+        - `id`: a unique string (e.g., UUID or number)
+        - `time`: e.g., "9:00 AM"
+        - `title`: short descriptive title
+        - `description`: 1–2 sentence summary
+        - `place`: name of place
+        - `keyword`: one of ["Travel", "Meal", "Relaxation", "Cultural", "Outdoor", "Backup", "Leisure", "Historical", "Beach", "Museum", "Shopping", etc.]
+
+    ---
+
+    **EXAMPLE OUTPUT FORMAT** (structure only):
+
+    {{
+    "status": "complete",
+    "days": [
+        {{
+        "day_number": 1,
+        "date": "{input_data.departure_date}",
+        "activities": [
+            {{
+            "id": "1",
+            "time": "9:00 AM",
+            "title": "Flight to Barcelona",
+            "description": "Depart from {input_data.location} to {input_data.destination}. Ensure wheelchair assistance is arranged.",
+            "place": "{input_data.location} Airport",
+            "keyword": "Travel"
+            }},
+            {{
+            "id": "2",
+            "time": "12:00 PM",
+            "title": "Hotel Check-in",
+            "description": "Check in to a wheelchair-accessible hotel with amenities like pool, gym, and balcony.",
+            "place": "Example Hotel Name",
+            "keyword": "Relaxation"
+            }}
+        ]
+        }}
+    ]
+    }}
+
+    Start from Day 1 (departure date: {input_data.departure_date}) and continue through Day {self.calculate_trip_days()} (return date: {input_data.return_date}).
+    Ensure each day has a mix of rest, food, and cultural activities, while considering children and accessibility needs.
+    """
+
 
 
                         
