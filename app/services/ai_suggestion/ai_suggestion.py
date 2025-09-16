@@ -91,36 +91,50 @@ class AISuggestion:
     **EXAMPLE OUTPUT FORMAT** (structure only):
 
     {{
-    "status": "complete",
-    "days": [
-        {{
-        "day_number": 1,
-        "date": "{input_data.departure_date}",
-        "activities": [
+    "status": "COMPLETED",
+    "data": {{
+        "itinerary_id": "itinerary-uuid-123",
+        "days": [
             {{
-            "id": "1",
-            "time": "9:00 AM",
-            "title": "Flight to Barcelona",
-            "description": "Depart from {input_data.location} to {input_data.destination}. Ensure wheelchair assistance is arranged.",
-            "place": "{input_data.location} Airport",
-            "keyword": "Travel"
-            }},
-            {{
-            "id": "2",
-            "time": "12:00 PM",
-            "title": "Hotel Check-in",
-            "description": "Check in to a wheelchair-accessible hotel with amenities like pool, gym, and balcony.",
-            "place": "Example Hotel Name",
-            "keyword": "Relaxation"
+                "day_number": 1,
+                "date": "{input_data.departure_date}",
+                "activities": [
+                    {{
+                        "id": "activity-uuid-1",
+                        "time": "5:00 PM",
+                        "title": "Flight Departure",
+                        "description": "Depart from {input_data.location} on a non-stop flight to {input_data.destination}. Ensure wheelchair assistance is arranged in advance.",
+                        "place": "{input_data.location} Airport",
+                        "keyword": "Travel"
+                    }},
+                    {{
+                        "id": "activity-uuid-2",
+                        "time": "6:30 AM",
+                        "title": "Arrival at {input_data.destination}",
+                        "description": "Arrive at {input_data.destination} Airport. Proceed through customs and collect luggage.",
+                        "place": "{input_data.destination} Airport",
+                        "keyword": "Travel"
+                    }},
+                    {{
+                        "id": "activity-uuid-3",
+                        "time": "8:00 AM",
+                        "title": "Hotel Check-in",
+                        "description": "Check in at a wheelchair-accessible hotel with necessary amenities.",
+                        "place": "Example Hotel Name",
+                        "keyword": "Relaxation"
+                    }}
+                ]
             }}
-        ]
-        }}
-    ]
+        ],
+        "status": "COMPLETED"
+    }},
+    "message": "Itinerary generated successfully"
     }}
 
     Start from Day 1 (departure date: {input_data.departure_date}) and continue through Day {self.calculate_trip_days()} (return date: {input_data.return_date}).
     Ensure each day has a mix of rest, food, and cultural activities, while considering children and accessibility needs.
     """
+
 
 
 

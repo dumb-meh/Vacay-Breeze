@@ -2,8 +2,8 @@ from pydantic import BaseModel
 from typing import List
 
 class ai_suggestion_request (BaseModel):
-    total_adults:str
-    total_children:str
+    total_adults:int
+    total_children:int
     destination:str
     location:str
     departure_date:str
