@@ -22,15 +22,36 @@ class AISuggestion:
         raw_response = self.get_openai_response(prompt, data)
         print(raw_response)
 
+        if raw_response.startswith('```json'):
+            raw_response = raw_response.replace('```json', '').replace('```', '').strip()
+        elif raw_response.startswith('```'):
+            raw_response = raw_response.replace('```', '').strip()
+
         try:
-            parsed_data = json.loads(raw_response)  # GPT must return valid JSON
-        except json.JSONDecodeError:
-            raise ValueError("Failed to parse GPT response as JSON")
+            parsed_data = json.loads(raw_response)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse GPT response as JSON: {e}")
+
+        status = parsed_data.get("status", "complete")  
+        days = None
+
+        if "data" in parsed_data and isinstance(parsed_data["data"], dict):
+            data_obj = parsed_data["data"]
+            if "status" in data_obj:
+                status = data_obj["status"]
+            if "days" in data_obj:
+                days = data_obj["days"]
+        else:
+            if "days" in parsed_data:
+                days = parsed_data["days"]
+
+        if days is None:
+            raise ValueError("Response missing 'days' key")
 
         itinerary_data = ItineraryData(
             itinerary_id=str(uuid4()),
-            status=parsed_data.get("status", "complete"),
-            days=parsed_data["days"]
+            status=status,
+            days=days
         )
 
         return ai_suggestion_response(
