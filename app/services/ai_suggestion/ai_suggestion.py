@@ -11,8 +11,6 @@ class AISuggestion:
     def __init__(self):
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
-    
-
     def get_suggestion(self, input_data: ai_suggestion_request) -> ai_suggestion_response:
         self.departure_date = input_data.departure_date
         self.return_date = input_data.return_date

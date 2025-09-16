@@ -13,6 +13,7 @@ class RegeneratePlan:
     def regenerate_plan(self, input_data: regenerate_plan_request) -> regenerate_plan_response:     
         prompt = self.create_prompt(input_data)
         response = self.get_openai_response(prompt, str(input_data.dict()))
+        print(response)
         try:
             response_json = json.loads(response)
         except json.JSONDecodeError as e:
@@ -52,33 +53,49 @@ class RegeneratePlan:
     Respond ONLY with raw JSON in the following structure:
 
     {{
-    "updated_itinerary": [
-        {{
-        "option": 1,
+    "success": true,
+    "data": {{
+        "updated_activity": {{
+        "id": "[same as original]",
         "time": "[same as original or adjusted if needed]",
         "title": "[New activity title]",
         "description": "[Description of the activity]",
-        "place": "[Location or venue name]"
+        "place": "[Location or venue name]",
+        "keyword": "[e.g., entertainment, park, museum]"
+        }},
+        "alternative_options": [
+        {{
+            "option": 1,
+            "time": "[same as original or adjusted if needed]",
+            "title": "[Alternative activity title]",
+            "description": "[Description of the alternative activity]",
+            "place": "[Alternative location or venue]",
+            "keyword": "[category keyword]"
         }},
         {{
-        "option": 2,
-        "time": "[same as original or adjusted if needed]",
-        "title": "[New activity title]",
-        "description": "[Description of the activity]",
-        "place": "[Location or venue name]"
+            "option": 2,
+            "time": "[same as original or adjusted if needed]",
+            "title": "[Alternative activity title]",
+            "description": "[Description of the alternative activity]",
+            "place": "[Alternative location or venue]",
+            "keyword": "[category keyword]"
         }},
         {{
-        "option": 3,
-        "time": "[same as original or adjusted if needed]",
-        "title": "[New activity title]",
-        "description": "[Description of the activity]",
-        "place": "[Location or venue name]"
+            "option": 3,
+            "time": "[same as original or adjusted if needed]",
+            "title": "[Alternative activity title]",
+            "description": "[Description of the alternative activity]",
+            "place": "[Alternative location or venue]",
+            "keyword": "[category keyword]"
         }}
-    ]
+        ]
+    }},
+    "message": "Alternative activities generated successfully"
     }}
 
     AGAIN: Your output must be **valid JSON only**. No extra comments, no markdown, and no natural language explanation.
-    """
+"""
+
 
 
     
