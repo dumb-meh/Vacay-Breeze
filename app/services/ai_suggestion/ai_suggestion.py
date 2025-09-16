@@ -18,7 +18,6 @@ class AISuggestion:
         self.return_date = input_data.return_date
         trip_days = self.calculate_trip_days()
 
-        # Step 1: Get outline
         outline_prompt = self.create_outline_prompt(input_data, trip_days)
         raw_outline = self.get_openai_response(outline_prompt, str(input_data.dict()))
         outline_json = json.loads(self.clean_json(raw_outline))
@@ -27,7 +26,6 @@ class AISuggestion:
         if not days_outline:
             raise ValueError("Outline failed or returned empty 'days'.")
 
-        # Step 2: Split into chunks (e.g. 5-day)
         chunk_size = 5
         chunks = [days_outline[i:i + chunk_size] for i in range(0, len(days_outline), chunk_size)]
 
@@ -39,20 +37,17 @@ class AISuggestion:
             details_json = json.loads(self.clean_json(raw_details))
             return details_json.get("days", [])
 
-        # Step 3: Run all chunk requests in parallel
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = executor.map(process_chunk, chunks)
 
         for chunk_days in results:
             detailed_days.extend(chunk_days)
 
-        # Sort by day_number
         detailed_days.sort(key=lambda x: x["day_number"])
 
-        # Step 4: Build final response
         response_json = {
-            "itinerary_id": str(uuid4()),  # Generate a unique itinerary ID
-            "status": "COMPLETED",          # Set status to "COMPLETED"
+            "itinerary_id": str(uuid4()),
+            "status": "COMPLETED",          
             "current_activity": detailed_days[0]["activities"][0] if detailed_days and detailed_days[0]["activities"] else None,
             "day_plan": detailed_days[0]["activities"] if detailed_days else [],
             "user_info": {
