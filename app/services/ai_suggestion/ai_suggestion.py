@@ -3,10 +3,12 @@ import json
 import openai
 from uuid import uuid4
 from dotenv import load_dotenv
+import concurrent.futures
 from .ai_suggestion_schema import ai_suggestion_response, ai_suggestion_request, ItineraryData
 import datetime
 
 load_dotenv()
+
 class AISuggestion:
     def __init__(self):
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -14,158 +16,186 @@ class AISuggestion:
     def get_suggestion(self, input_data: ai_suggestion_request) -> ai_suggestion_response:
         self.departure_date = input_data.departure_date
         self.return_date = input_data.return_date
+        trip_days = self.calculate_trip_days()
 
-        prompt = self.create_prompt(input_data)
-        data = str(input_data.dict())
-        raw_response = self.get_openai_response(prompt, data)
-        print(raw_response)
+        # Step 1: Get outline
+        outline_prompt = self.create_outline_prompt(input_data, trip_days)
+        raw_outline = self.get_openai_response(outline_prompt, str(input_data.dict()))
+        outline_json = json.loads(self.clean_json(raw_outline))
+        days_outline = outline_json.get("days", [])
 
-        if raw_response.startswith('```json'):
-            raw_response = raw_response.replace('```json', '').replace('```', '').strip()
-        elif raw_response.startswith('```'):
-            raw_response = raw_response.replace('```', '').strip()
+        if not days_outline:
+            raise ValueError("Outline failed or returned empty 'days'.")
 
-        try:
-            parsed_data = json.loads(raw_response)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse GPT response as JSON: {e}")
+        # Step 2: Split into chunks (e.g. 5-day)
+        chunk_size = 5
+        chunks = [days_outline[i:i + chunk_size] for i in range(0, len(days_outline), chunk_size)]
 
-        status = parsed_data.get("status", "complete")  
-        days = None
+        detailed_days = []
 
-        if "data" in parsed_data and isinstance(parsed_data["data"], dict):
-            data_obj = parsed_data["data"]
-            if "status" in data_obj:
-                status = data_obj["status"]
-            if "days" in data_obj:
-                days = data_obj["days"]
-        else:
-            if "days" in parsed_data:
-                days = parsed_data["days"]
+        def process_chunk(chunk):
+            detailed_prompt = self.create_detailed_prompt(input_data, chunk)
+            raw_details = self.get_openai_response(detailed_prompt, str(input_data.dict()))
+            details_json = json.loads(self.clean_json(raw_details))
+            return details_json.get("days", [])
 
-        if days is None:
-            raise ValueError("Response missing 'days' key")
+        # Step 3: Run all chunk requests in parallel
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = executor.map(process_chunk, chunks)
 
-        itinerary_data = ItineraryData(
-            itinerary_id=str(uuid4()),
-            status=status,
-            days=days
-        )
+        for chunk_days in results:
+            detailed_days.extend(chunk_days)
+
+        # Sort by day_number
+        detailed_days.sort(key=lambda x: x["day_number"])
+
+        # Step 4: Build final response
+        response_json = {
+            "itinerary_id": str(uuid4()),  # Generate a unique itinerary ID
+            "status": "COMPLETED",          # Set status to "COMPLETED"
+            "current_activity": detailed_days[0]["activities"][0] if detailed_days and detailed_days[0]["activities"] else None,
+            "day_plan": detailed_days[0]["activities"] if detailed_days else [],
+            "user_info": {
+                "total_adults": input_data.total_adults,
+                "total_children": input_data.total_children,
+                "destination": input_data.destination,
+                "location": input_data.location,
+                "departure_date": input_data.departure_date,
+                "return_date": input_data.return_date,
+                "amenities": input_data.amenities,
+                "activities": input_data.activities,
+                "pacing": input_data.pacing,
+                "food": input_data.food,
+                "special_note": input_data.special_note
+            },
+            "days": detailed_days
+        }
 
         return ai_suggestion_response(
             success=True,
             message="Itinerary generated successfully.",
-            data=itinerary_data
+            data=response_json
         )
 
     
-    def create_prompt(self, input_data: ai_suggestion_request) -> str:
-        return f"""You are an expert travel planner specializing in creating detailed, personalized travel itineraries.
+    def create_outline_prompt(self, input_data: ai_suggestion_request, trip_days: int) -> str:
+        return f"""You are a travel planner AI.
 
-    Given the traveler's preferences below, generate a structured itinerary in **valid JSON format only**.
+Generate a structured JSON itinerary outline for a {trip_days}-day trip to {input_data.destination} starting on {input_data.departure_date}. 
+ONLY include this structure per day:
 
-    ---
+- day_number (integer)
+- date (YYYY-MM-DD)
+- places (list of 2–4 unique attractions/activities per day, brief names only)
+
+DO NOT include full descriptions or times. Only suggest unique, culturally and logistically appropriate activities. No duplication.
+
+Return only valid JSON in this format:
+
+{{
+  "days": [
+    {{
+      "day_number": 1,
+      "date": "YYYY-MM-DD",
+      "places": ["Place 1", "Place 2", "Place 3"]
+    }},
+    ...
+  ]
+}}"""
+
+    def create_detailed_prompt(self, input_data: ai_suggestion_request, day_chunk: list) -> str:
+        day_info = "\n".join(
+            f"Day {day['day_number']} ({day['date']}): {', '.join(day['places'])}"
+            for day in day_chunk
+        )
+
+        return f"""You are an expert travel planner AI. Based on the given per-day list of places, generate a detailed JSON travel itinerary.
 
     **TRAVEL DETAILS**
-    - Travelers: {input_data.total_adults} adults, {input_data.total_children} children (under 12)
+    - Travelers: {input_data.total_adults} adults, {input_data.total_children} children
     - Destination: {input_data.destination}
-    - Departure City: {input_data.location}
-    - Departure Date: {input_data.departure_date}
-    - Return Date: {input_data.return_date}
-    - Trip Duration: {self.calculate_trip_days()} days
-
-    **ACCOMMODATION & AMENITIES**
-    - Amenities Required: {', '.join(input_data.amenities)}
-
-    **ACTIVITY PREFERENCES**
-    - Preferred Activities: {', '.join(input_data.activities)}
-
-    **VACATION PACE**
-    - {', '.join(input_data.pacing)}
-
-    **FOOD PREFERENCES**
-    - Cuisine/Experience: {', '.join(input_data.food)}
-
-    **SPECIAL REQUIREMENTS**
-    - {input_data.special_notes if input_data.special_notes else 'None'}
+    - Accessibility/Amenities: {', '.join(input_data.amenities)}
+    - Interests: {', '.join(input_data.activities)}
+    - Food Preferences: {', '.join(input_data.food)}
+    - Pacing: {', '.join(input_data.pacing)}
+    - Special Notes: {input_data.special_note or 'None'}
 
     ---
 
-    **OUTPUT INSTRUCTIONS**
-    - Output must be valid JSON. Do not use markdown formatting, explanations, or natural language outside of the JSON.
-    - Each day's entry must include:
-        - `day_number`: integer
-        - `date`: in YYYY-MM-DD format
-        - `activities`: a list of structured activities
-    - Each activity must include:
-        - `id`: a unique string (e.g., UUID or number)
-        - `time`: e.g., "9:00 AM"
-        - `title`: short descriptive title
-        - `description`: 1–2 sentence summary
-        - `place`: name of place
-        - `keyword`: one of ["Travel", "Meal", "Relaxation", "Cultural", "Outdoor", "Backup", "Leisure", "Historical", "Beach", "Museum", "Shopping", etc.]
+    **ASSIGNED DAYS**
+    {day_info}
 
     ---
 
-    **EXAMPLE OUTPUT FORMAT** (structure only):
+    **INSTRUCTIONS**
+    - Only generate days assigned above
+    - Each day should have 2–4 activities
+    - Activities should flow logically (morning → evening)
+    - Consider accessibility, age group, and pacing
+    - Use appropriate keywords: ["Travel", "Meal", "Relaxation", "Cultural", "Outdoor", "Leisure", "Historical", "Museum", "Shopping", "Backup"]
+
+    ---
+
+    **EXAMPLE OUTPUT FORMAT** (JSON only, no markdown):
 
     {{
-    "status": "COMPLETED",
-    "data": {{
-        "itinerary_id": "itinerary-uuid-123",
-        "days": [
+    "days": [
+        {{
+        "day_number": 1,
+        "date": "2025-09-20",
+        "activities": [
             {{
-                "day_number": 1,
-                "date": "{input_data.departure_date}",
-                "activities": [
-                    {{
-                        "id": "activity-uuid-1",
-                        "time": "5:00 PM",
-                        "title": "Flight Departure",
-                        "description": "Depart from {input_data.location} on a non-stop flight to {input_data.destination}. Ensure wheelchair assistance is arranged in advance.",
-                        "place": "{input_data.location} Airport",
-                        "keyword": "Travel"
-                    }},
-                    {{
-                        "id": "activity-uuid-2",
-                        "time": "6:30 AM",
-                        "title": "Arrival at {input_data.destination}",
-                        "description": "Arrive at {input_data.destination} Airport. Proceed through customs and collect luggage.",
-                        "place": "{input_data.destination} Airport",
-                        "keyword": "Travel"
-                    }},
-                    {{
-                        "id": "activity-uuid-3",
-                        "time": "8:00 AM",
-                        "title": "Hotel Check-in",
-                        "description": "Check in at a wheelchair-accessible hotel with necessary amenities.",
-                        "place": "Example Hotel Name",
-                        "keyword": "Relaxation"
-                    }}
-                ]
+            "id": "activity-uuid-1",
+            "time": "8:00 AM",
+            "title": "Breakfast at Hotel",
+            "description": "Start the day with a healthy breakfast at the hotel's wheelchair-accessible restaurant.",
+            "place": "Hotel Restaurant",
+            "keyword": "Meal"
+            }},
+            {{
+            "id": "activity-uuid-2",
+            "time": "10:00 AM",
+            "title": "Visit Senso-ji Temple",
+            "description": "Explore Tokyo's oldest temple with wide pathways suitable for wheelchairs. Learn about local religious traditions.",
+            "place": "Senso-ji Temple",
+            "keyword": "Cultural"
+            }},
+            {{
+            "id": "activity-uuid-3",
+            "time": "1:00 PM",
+            "title": "Lunch at Asakusa District",
+            "description": "Enjoy a traditional Japanese lunch with vegetarian options available, in an accessible setting.",
+            "place": "Asakusa Dining Area",
+            "keyword": "Meal"
             }}
-        ],
-        "status": "COMPLETED"
-    }},
-    "message": "Itinerary generated successfully"
+        ]
+        }}
+    ]
     }}
 
-    Start from Day 1 (departure date: {input_data.departure_date}) and continue through Day {self.calculate_trip_days()} (return date: {input_data.return_date}).
-    Ensure each day has a mix of rest, food, and cultural activities, while considering children and accessibility needs.
-    """
+    ---
+
+    ONLY return valid JSON following this structure. Do not return explanations or markdown. All activities must reflect the assigned places."""
 
 
-
-
-                        
     def get_openai_response(self, prompt: str, data: str) -> str:
         completion = self.client.chat.completions.create(
-            model="gpt-4o-search-preview",
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": data}]      
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": data}
+            ]
         )
-        return completion.choices[0].message.content
-    
+        return completion.choices[0].message.content.strip()
+
     def calculate_trip_days(self) -> int:
         departure = datetime.datetime.strptime(self.departure_date, '%Y-%m-%d')
         return_date = datetime.datetime.strptime(self.return_date, '%Y-%m-%d')
         return (return_date - departure).days + 1
+
+    def clean_json(self, raw: str) -> str:
+        if raw.startswith("```json"):
+            return raw[7:].strip("` \n")
+        if raw.startswith("```"):
+            return raw[3:].strip("` \n")
+        return raw

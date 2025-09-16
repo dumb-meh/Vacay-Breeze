@@ -12,7 +12,7 @@ class ai_suggestion_request (BaseModel):
     activities:List[str]
     pacing:list[str]
     food:list[str]
-    special_notes:str    
+    special_note:str    
 class Activity(BaseModel):
     id: str
     time: str
