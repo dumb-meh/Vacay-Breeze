@@ -130,6 +130,9 @@ Return only valid JSON in this format:
     - Use appropriate keywords: ["Travel", "Meal", "Relaxation", "Cultural", "Outdoor", "Leisure", "Historical", "Museum", "Shopping", "Backup"]
 
     ---
+    **Activity ID Format**: Each activity must have a unique `id` in the format `activity-<day_number>-<activity_number>`, where:
+    - `day_number` is the day of the trip (1, 2, 3, etc.)
+    - `activity_number` is the sequential number for the activity on that day (1, 2, 3, etc.).
 
     **EXAMPLE OUTPUT FORMAT** (JSON only, no markdown):
 
@@ -140,7 +143,7 @@ Return only valid JSON in this format:
         "date": "2025-09-20",
         "activities": [
             {{
-            "id": "activity-uuid-1",
+            "id": "activity-1-1",
             "time": "8:00 AM",
             "title": "Breakfast at Hotel",
             "description": "Start the day with a healthy breakfast at the hotel's wheelchair-accessible restaurant.",
@@ -148,7 +151,7 @@ Return only valid JSON in this format:
             "keyword": "Meal"
             }},
             {{
-            "id": "activity-uuid-2",
+            "id": "activity-1-2",
             "time": "10:00 AM",
             "title": "Visit Senso-ji Temple",
             "description": "Explore Tokyo's oldest temple with wide pathways suitable for wheelchairs. Learn about local religious traditions.",
@@ -156,7 +159,7 @@ Return only valid JSON in this format:
             "keyword": "Cultural"
             }},
             {{
-            "id": "activity-uuid-3",
+            "id": "activity-1-3",
             "time": "1:00 PM",
             "title": "Lunch at Asakusa District",
             "description": "Enjoy a traditional Japanese lunch with vegetarian options available, in an accessible setting.",
