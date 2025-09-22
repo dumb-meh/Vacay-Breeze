@@ -1,82 +1,236 @@
 import os
 import json
-import openai
-from uuid import uuid4
-from dotenv import load_dotenv
-import concurrent.futures
-from .ai_suggestion_schema import ai_suggestion_response, ai_suggestion_request, ItineraryData
+import asyncio
 import datetime
+import logging
+from uuid import uuid4
+from typing import Any, Callable, List, Tuple
+
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
+from fastapi import HTTPException
+
+from .ai_suggestion_schema import ai_suggestion_response, ai_suggestion_request
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
 class AISuggestion:
-    def __init__(self):
-        self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    
-    def get_suggestion(self, input_data: ai_suggestion_request) -> ai_suggestion_response:
-        self.departure_date = input_data.departure_date
-        self.return_date = input_data.return_date
-        trip_days = self.calculate_trip_days()
+    """AISuggestion -- single-file, drop-in replacement.
 
-        outline_prompt = self.create_outline_prompt(input_data, trip_days)
-        raw_outline = self.get_openai_response(outline_prompt, str(input_data.dict()))
-        outline_json = json.loads(self.clean_json(raw_outline))
-        days_outline = outline_json.get("days", [])
+    Features:
+    - short-trip (<=5 days) single-shot prompt
+    - long-trip (>5 days) outline -> chunk -> parallel detailed prompts
+    - robust JSON cleaning & parsing
+    - concurrency semaphore + retry/backoff
+    - UUID generation for itinerary_id (you can replace with DB ids)
 
-        if not days_outline:
-            raise ValueError("Outline failed or returned empty 'days'.")
+    Note: this expects an AsyncOpenAI client (openai package) and a pydantic-like
+    ai_suggestion_request with `.json()` available. If you don't use FastAPI,
+    replace HTTPException with appropriate exceptions.
+    """
 
-        chunk_size = 5
-        chunks = [days_outline[i:i + chunk_size] for i in range(0, len(days_outline), chunk_size)]
+    def __init__(self, concurrency_limit: int = 5, max_retries: int = 2):
+        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.concurrency_limit = concurrency_limit
+        self.max_retries = max_retries
 
-        detailed_days = []
+    # ------------------ public entry point ------------------
+    async def get_suggestion(self, input_data: ai_suggestion_request) -> ai_suggestion_response:
+        try:
+            dep = datetime.datetime.strptime(input_data.departure_date, "%Y-%m-%d")
+            ret = datetime.datetime.strptime(input_data.return_date, "%Y-%m-%d")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Dates must be in YYYY-MM-DD format.")
 
-        def process_chunk(chunk):
-            detailed_prompt = self.create_detailed_prompt(input_data, chunk)
-            raw_details = self.get_openai_response(detailed_prompt, str(input_data.dict()))
-            details_json = json.loads(self.clean_json(raw_details))
-            return details_json.get("days", [])
+        if ret < dep:
+            raise HTTPException(status_code=400, detail="return_date must be the same or after departure_date.")
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            results = executor.map(process_chunk, chunks)
+        trip_days = (ret - dep).days + 1
 
-        for chunk_days in results:
-            detailed_days.extend(chunk_days)
+        logger.info("Generating itinerary for %s -> %s (%d days)", input_data.departure_date, input_data.return_date, trip_days)
 
-        detailed_days.sort(key=lambda x: x["day_number"])
+        if trip_days <= 4:
+            logger.info("Using SHORT TRIP path")
+            return await self.handle_short_trip(input_data, trip_days)
+        else:
+            logger.info("Using LONG TRIP path")
+            return await self._handle_long_trip(input_data, trip_days)
 
-        response_json = {
-            "itinerary_id": str(uuid4()),
-            "status": "COMPLETED",          
-            "current_activity": detailed_days[0]["activities"][0] if detailed_days and detailed_days[0]["activities"] else None,
-            "day_plan": detailed_days[0]["activities"] if detailed_days else [],
-            "user_info": {
-                "total_adults": input_data.total_adults,
-                "total_children": input_data.total_children,
-                "destination": input_data.destination,
-                "location": input_data.location,
-                "departure_date": input_data.departure_date,
-                "return_date": input_data.return_date,
-                "amenities": input_data.amenities,
-                "activities": input_data.activities,
-                "pacing": input_data.pacing,
-                "food": input_data.food,
-                "special_note": input_data.special_note
-            },
-            "days": detailed_days
-        }
+    # ------------------ short-trip path ------------------
+    async def handle_short_trip(self, input_data: ai_suggestion_request, trip_days: int) -> ai_suggestion_response:
+        logger.info("SHORT TRIP: Starting processing for %d days", trip_days)
+        itinerary_id = f"itinerary-{uuid4()}"
+        prompt = self.create_short_trip_prompt(input_data, trip_days, itinerary_id)
+
+        raw = await self._call_with_retries(lambda: self.get_openai_response(prompt, input_data))
+        cleaned = self.clean_json(raw)
+
+        try:
+            parsed = json.loads(cleaned)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"LLM returned invalid JSON: {e}")
 
         return ai_suggestion_response(
             success=True,
-            message="Itinerary generated successfully.",
-            data=response_json
+            message="Itinerary (short trip) generated successfully.",
+            data=parsed,
         )
 
-    
+    def create_short_trip_prompt(self, input_data: ai_suggestion_request, trip_days: int, itinerary_id: str) -> str:
+        return f"""You are an expert travel planner AI. Use web search to find current, accurate information about {input_data.destination}.
+
+    TRAVEL DETAILS:
+    - Trip Duration: {trip_days} days
+    - Travelers: {input_data.total_adults} adults, {input_data.total_children} children (under 12)
+    - Destination: {input_data.destination}
+    - Departure Date: {input_data.departure_date}
+    - Return Date: {input_data.return_date}
+
+    PREFERENCES:
+    - Activities: {', '.join(input_data.activities)}
+    - Amenities: {', '.join(input_data.amenities)}
+    - Food: {', '.join(input_data.food)}
+    - Pacing: {', '.join(input_data.pacing)}
+    - Special Notes: {input_data.special_note or 'None specified'}
+
+    Search the web for real places, restaurants, hotels, and current events that match these preferences.
+
+    IMPORTANT: Return ONLY valid JSON, no markdown, no comments:
+
+    {{
+    "success": true,
+    "data": {{
+        "itinerary_id": "{itinerary_id}",
+        "days": [
+        {{
+            "day_number": 1,
+            "day_uuid": "da-1-{itinerary_id}",
+            "date": "{input_data.departure_date}",
+            "activities": [
+            {{
+                "id": "generated-uuid-activity-1",
+                "time": "9:00 AM",
+                "title": "Airport Arrival",
+                "description": "Arrive at {input_data.destination} Airport and proceed through customs and baggage claim",
+                "place": "{input_data.destination} Airport",
+                "keyword": "arrival"
+            }},
+            {{
+                "id": "generated-uuid-activity-2", 
+                "time": "10:30 AM",
+                "title": "Hotel Check-in",
+                "description": "Check-in at [Real Hotel Name that matches amenities]",
+                "place": "[Real Hotel Name]",
+                "keyword": "hotel"
+            }},
+            {{
+                "id": "generated-uuid-activity-3",
+                "time": "12:00 PM", 
+                "title": "[Real Restaurant/Dining Experience]",
+                "description": "Description matching food preferences",
+                "place": "[Real Restaurant Name]",
+                "keyword": "dining"
+            }},
+            {{
+                "id": "generated-uuid-activity-4",
+                "time": "2:00 PM",
+                "title": "[Real Attraction/Activity]",
+                "description": "Activity description matching user interests and any current special events",
+                "place": "[Real Venue Name]", 
+                "keyword": "sightseeing"
+            }}
+            ]
+        }}
+        ],
+        "status": "COMPLETED"
+    }},
+    "message": "Itinerary generated successfully"
+    }}
+
+    Generate {trip_days} days of activities. Use real place names found through web search that match the user's preferences."""
+
+    # ------------------ long-trip path ------------------
+    async def _handle_long_trip(self, input_data: ai_suggestion_request, trip_days: int) -> ai_suggestion_response:
+        logger.info("LONG TRIP: Starting processing for %d days", trip_days)
+        
+        # 1) Outline pass
+        outline_prompt = self.create_outline_prompt(input_data, trip_days)
+        raw_outline = await self._call_with_retries(lambda: self.get_openai_response(outline_prompt, input_data))
+        outline_clean = self.clean_json(raw_outline)
+
+        try:
+            outline_obj = json.loads(outline_clean)
+        except Exception as e:
+            logger.error("Failed parsing outline JSON: %s\nCleaned (truncated): %s\nRaw (truncated): %s", e, outline_clean[:2000], raw_outline[:2000])
+            raise HTTPException(status_code=502, detail=f"LLM returned invalid outline JSON: {e}")
+
+        days_outline = outline_obj.get("days", [])
+        logger.info("Outline generated %d days", len(days_outline))
+        
+        if not days_outline:
+            raise HTTPException(status_code=502, detail="Outline returned empty days")
+
+        # 2) chunk the days
+        chunk_size = 4
+        chunks = [days_outline[i : i + chunk_size] for i in range(0, len(days_outline), chunk_size)]
+        logger.info("Split into %d chunks of max size %d", len(chunks), chunk_size)
+
+        # 3) process chunks in parallel but with concurrency limit and proper merging
+        sem = asyncio.Semaphore(self.concurrency_limit)
+
+        async def worker(chunk: List[dict], idx: int) -> Tuple[int, List[dict]]:
+            async with sem:
+                logger.info("Worker %d processing chunk with %d days", idx, len(chunk))
+                prompt = self.create_detailed_prompt(input_data, chunk)
+                raw = await self._call_with_retries(lambda: self.get_openai_response(prompt, input_data))
+                cleaned = self.clean_json(raw)
+                try:
+                    parsed = json.loads(cleaned)
+                except Exception as e:
+                    logger.error("Failed parsing detailed chunk %s: %s\nCleaned (truncated): %s\nRaw (truncated): %s", idx, e, cleaned[:2000], raw[:2000])
+                    raise HTTPException(status_code=502, detail=f"LLM returned invalid JSON for chunk {idx}: {e}")
+
+                # Handle different response structures
+                days = []
+                if "days" in parsed:
+                    days = parsed["days"]
+                elif "data" in parsed and "days" in parsed["data"]:
+                    days = parsed["data"]["days"]
+                elif isinstance(parsed, list):
+                    days = parsed  # Direct array of days
+                
+                logger.info("Worker %d successfully processed %d days", idx, len(days))
+                return idx, days
+
+        tasks = [worker(chunk, i) for i, chunk in enumerate(chunks)]
+        results = await asyncio.gather(*tasks)
+
+        # 4) merge preserving order
+        results_sorted = sorted(results, key=lambda x: x[0])
+        merged_days: List[dict] = []
+        for idx, days in results_sorted:
+            merged_days.extend(days)
+        
+        logger.info("Merged %d total days from all workers", len(merged_days))
+
+        itinerary_id = f"itinerary-{uuid4()}"
+        response_obj = {
+            "success": True,
+            "data": {"itinerary_id": itinerary_id, "days": merged_days, "status": "COMPLETED"},
+            "message": "Itinerary generated successfully",
+        }
+
+        return ai_suggestion_response(success=True, message="Itinerary generated successfully.", data=response_obj["data"])
+
+    # ------------------ prompt builders ------------------
     def create_outline_prompt(self, input_data: ai_suggestion_request, trip_days: int) -> str:
         return f"""You are a travel planner AI.
 
-Generate a structured JSON itinerary outline for a {trip_days}-day trip to {input_data.destination} starting on {input_data.departure_date}. 
+Generate a structured JSON itinerary outline for a {trip_days}-day trip to {input_data.destination} starting on {input_data.departure_date}.
 ONLY include this structure per day:
 
 - day_number (integer)
@@ -98,7 +252,7 @@ Return only valid JSON in this format:
   ]
 }}"""
 
-    def create_detailed_prompt(self, input_data: ai_suggestion_request, day_chunk: list) -> str:
+    def create_detailed_prompt(self, input_data: ai_suggestion_request, day_chunk: List[dict]) -> str:
         day_info = "\n".join(
             f"Day {day['day_number']} ({day['date']}): {', '.join(day['places'])}"
             for day in day_chunk
@@ -106,7 +260,7 @@ Return only valid JSON in this format:
 
         return f"""You are an expert travel planner AI. Based on the given per-day list of places, generate a detailed JSON travel itinerary.
 
-    **TRAVEL DETAILS**
+    TRAVEL DETAILS
     - Travelers: {input_data.total_adults} adults, {input_data.total_children} children
     - Destination: {input_data.destination}
     - Accessibility/Amenities: {', '.join(input_data.amenities)}
@@ -117,83 +271,98 @@ Return only valid JSON in this format:
 
     ---
 
-    **ASSIGNED DAYS**
+    ASSIGNED DAYS
     {day_info}
 
     ---
 
-    **INSTRUCTIONS**
+    INSTRUCTIONS
     - Only generate days assigned above
     - Each day should have 2–4 activities
     - Activities should flow logically (morning → evening)
     - Consider accessibility, age group, and pacing
     - Use appropriate keywords: ["Travel", "Meal", "Relaxation", "Cultural", "Outdoor", "Leisure", "Historical", "Museum", "Shopping", "Backup"]
 
-    ---
-    **Activity ID Format**: Each activity must have a unique `id` in the format `activity-<day_number>-<activity_number>`, where:
-    - `day_number` is the day of the trip (1, 2, 3, etc.)
-    - `activity_number` is the sequential number for the activity on that day (1, 2, 3, etc.).
-
-    **EXAMPLE OUTPUT FORMAT** (JSON only, no markdown):
-
+    Return ONLY valid JSON in this exact format:
     {{
     "days": [
         {{
         "day_number": 1,
-        "date": "2025-09-20",
+        "day_uuid": "generate-unique-uuid-here",
+        "date": "YYYY-MM-DD",
         "activities": [
             {{
             "id": "activity-1-1",
-            "time": "8:00 AM",
-            "title": "Breakfast at Hotel",
-            "description": "Start the day with a healthy breakfast at the hotel's wheelchair-accessible restaurant.",
-            "place": "Hotel Restaurant",
-            "keyword": "Meal"
-            }},
-            {{
-            "id": "activity-1-2",
-            "time": "10:00 AM",
-            "title": "Visit Senso-ji Temple",
-            "description": "Explore Tokyo's oldest temple with wide pathways suitable for wheelchairs. Learn about local religious traditions.",
-            "place": "Senso-ji Temple",
-            "keyword": "Cultural"
-            }},
-            {{
-            "id": "activity-1-3",
-            "time": "1:00 PM",
-            "title": "Lunch at Asakusa District",
-            "description": "Enjoy a traditional Japanese lunch with vegetarian options available, in an accessible setting.",
-            "place": "Asakusa Dining Area",
-            "keyword": "Meal"
+            "time": "9:00 AM",
+            "title": "Activity title",
+            "description": "Brief activity description",
+            "place": "Place name",
+            "keyword": "activity-type"
             }}
         ]
         }}
     ]
     }}
 
-    ---
+    IMPORTANT: Return only the JSON object with the "days" array. Do not include any other text or markdown."""
 
-    ONLY return valid JSON following this structure. Do not return explanations or markdown. All activities must reflect the assigned places."""
+    # ------------------ openai call + helpers ------------------
+    async def get_openai_response(self, prompt: str, data_obj: Any) -> str:
+        # data_obj may be a pydantic model with .json() or a dict
+        if hasattr(data_obj, "json") and callable(getattr(data_obj, "json")):
+            data_json = data_obj.json()
+        else:
+            data_json = json.dumps(data_obj)
 
-
-    def get_openai_response(self, prompt: str, data: str) -> str:
-        completion = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": data}
-            ]
+        completion = await self.client.chat.completions.create(
+            model="gpt-4o-search-preview",
+            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": data_json}],
         )
+
         return completion.choices[0].message.content.strip()
 
+    async def _call_with_retries(self, func: Callable[[], Any]) -> Any:
+        attempt = 0
+        while True:
+            try:
+                return await func()
+            except Exception as e:
+                attempt += 1
+                logger.warning("Attempt %d failed with error: %s", attempt, e)
+                if attempt > self.max_retries:
+                    logger.error("Max retries reached. Raising error.")
+                    raise
+                await asyncio.sleep(1.2 ** attempt)
+
     def calculate_trip_days(self) -> int:
-        departure = datetime.datetime.strptime(self.departure_date, '%Y-%m-%d')
-        return_date = datetime.datetime.strptime(self.return_date, '%Y-%m-%d')
+        departure = datetime.datetime.strptime(self.departure_date, "%Y-%m-%d")
+        return_date = datetime.datetime.strptime(self.return_date, "%Y-%m-%d")
         return (return_date - departure).days + 1
 
     def clean_json(self, raw: str) -> str:
+        # If already valid JSON, return it
+        try:
+            json.loads(raw)
+            return raw
+        except Exception:
+            pass
+
+        # Remove backtick fences
         if raw.startswith("```json"):
-            return raw[7:].strip("` \n")
-        if raw.startswith("```"):
-            return raw[3:].strip("` \n")
+            raw = raw[len("```json"):].strip()
+        elif raw.startswith("```"):
+            raw = raw[len("```"):].strip()
+
+        # Extract first { ... } pair as candidate
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = raw[start : end + 1]
+            try:
+                json.loads(candidate)
+                return candidate
+            except Exception:
+                pass
+
+        # Last resort: return raw so caller can log it
         return raw

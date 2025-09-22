@@ -28,11 +28,9 @@ class RegeneratePlan:
     - The full day's itinerary to help avoid overlaps
     - Additional user preferences and context
 
-    CURRENT ITINERARY TO MODIFY:
-    {input_data.current_itinerary}
 
-    USER REQUESTED CHANGE:
-    {input_data.user_change}
+    USER Search:
+    {input_data.user_search}
 
     FULL DAY PLAN:
     {input_data.day_plan}

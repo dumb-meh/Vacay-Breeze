@@ -8,7 +8,7 @@ suggestion = AISuggestion()
 @router.post("/ai_suggestion", response_model=ai_suggestion_response)
 async def get_ai_suggestion(request_data: ai_suggestion_request):
     try:
-        response = suggestion.get_suggestion(request_data)
+        response = await suggestion.get_suggestion(request_data)
         return response
     
     except Exception as e:
