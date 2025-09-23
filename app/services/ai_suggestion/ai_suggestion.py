@@ -158,6 +158,7 @@ class AISuggestion:
         logger.info("LONG TRIP: Starting processing for %d days", trip_days)
         
         # 1) Outline pass
+        itinerary_id = f"itinerary-{uuid4()}"
         outline_prompt = self.create_outline_prompt(input_data, trip_days)
         raw_outline = await self._call_with_retries(lambda: self.get_openai_response(outline_prompt, input_data))
         outline_clean = self.clean_json(raw_outline)
@@ -182,10 +183,10 @@ class AISuggestion:
         # 3) process chunks in parallel but with concurrency limit and proper merging
         sem = asyncio.Semaphore(self.concurrency_limit)
 
-        async def worker(chunk: List[dict], idx: int) -> Tuple[int, List[dict]]:
+        async def worker(chunk: List[dict], idx: int,itinerary_id:str) -> Tuple[int, List[dict]]:
             async with sem:
                 logger.info("Worker %d processing chunk with %d days", idx, len(chunk))
-                prompt = self.create_detailed_prompt(input_data, chunk)
+                prompt = self.create_detailed_prompt(input_data, chunk,itinerary_id)
                 raw = await self._call_with_retries(lambda: self.get_openai_response(prompt, input_data))
                 cleaned = self.clean_json(raw)
                 try:
@@ -206,10 +207,9 @@ class AISuggestion:
                 logger.info("Worker %d successfully processed %d days", idx, len(days))
                 return idx, days
 
-        tasks = [worker(chunk, i) for i, chunk in enumerate(chunks)]
+        tasks = [worker(chunk, i, itinerary_id) for i, chunk in enumerate(chunks)]
         results = await asyncio.gather(*tasks)
-
-        # 4) merge preserving order
+        
         results_sorted = sorted(results, key=lambda x: x[0])
         merged_days: List[dict] = []
         for idx, days in results_sorted:
@@ -217,7 +217,6 @@ class AISuggestion:
         
         logger.info("Merged %d total days from all workers", len(merged_days))
 
-        itinerary_id = f"itinerary-{uuid4()}"
         response_obj = {
             "success": True,
             "data": {"itinerary_id": itinerary_id, "days": merged_days, "status": "COMPLETED"},
@@ -252,7 +251,7 @@ Return only valid JSON in this format:
   ]
 }}"""
 
-    def create_detailed_prompt(self, input_data: ai_suggestion_request, day_chunk: List[dict]) -> str:
+    def create_detailed_prompt(self, input_data: ai_suggestion_request, day_chunk: List[dict], itinerary_id: str) -> str:
         day_info = "\n".join(
             f"Day {day['day_number']} ({day['date']}): {', '.join(day['places'])}"
             for day in day_chunk
@@ -288,7 +287,7 @@ Return only valid JSON in this format:
     "days": [
         {{
         "day_number": 1,
-        "day_uuid": "generate-unique-uuid-here",
+        "day_uuid": "day-1-{itinerary_id}",
         "date": "YYYY-MM-DD",
         "activities": [
             {{
