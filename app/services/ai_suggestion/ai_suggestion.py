@@ -291,7 +291,7 @@ Return only valid JSON in this format:
         "date": "YYYY-MM-DD",
         "activities": [
             {{
-            "id": "activity-1-1",
+            "id": "activity-day-1-1",
             "time": "9:00 AM",
             "title": "Activity title",
             "description": "Brief activity description",
