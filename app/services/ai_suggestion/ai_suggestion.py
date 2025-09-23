@@ -37,8 +37,7 @@ class AISuggestion:
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.concurrency_limit = concurrency_limit
         self.max_retries = max_retries
-
-    # ------------------ public entry point ------------------
+        
     async def get_suggestion(self, input_data: ai_suggestion_request) -> ai_suggestion_response:
         try:
             dep = datetime.datetime.strptime(input_data.departure_date, "%Y-%m-%d")
@@ -60,7 +59,7 @@ class AISuggestion:
             logger.info("Using LONG TRIP path")
             return await self._handle_long_trip(input_data, trip_days)
 
-    # ------------------ short-trip path ------------------
+    # short-trip path (<=4 days)
     async def handle_short_trip(self, input_data: ai_suggestion_request, trip_days: int) -> ai_suggestion_response:
         logger.info("SHORT TRIP: Starting processing for %d days", trip_days)
         itinerary_id = f"itinerary-{uuid4()}"
@@ -108,11 +107,11 @@ class AISuggestion:
         "days": [
         {{
             "day_number": 1,
-            "day_uuid": "da-1-{itinerary_id}",
+            "day_uuid": "day-1-{itinerary_id}",
             "date": "{input_data.departure_date}",
             "activities": [
             {{
-                "id": "generated-uuid-activity-1",
+                "id": "activity-day-1-1",
                 "time": "9:00 AM",
                 "title": "Airport Arrival",
                 "description": "Arrive at {input_data.destination} Airport and proceed through customs and baggage claim",
@@ -120,7 +119,7 @@ class AISuggestion:
                 "keyword": "arrival"
             }},
             {{
-                "id": "generated-uuid-activity-2", 
+                "id": "activity-day-1-2", 
                 "time": "10:30 AM",
                 "title": "Hotel Check-in",
                 "description": "Check-in at [Real Hotel Name that matches amenities]",
@@ -128,7 +127,7 @@ class AISuggestion:
                 "keyword": "hotel"
             }},
             {{
-                "id": "generated-uuid-activity-3",
+                "id": "activity-day-1-3",
                 "time": "12:00 PM", 
                 "title": "[Real Restaurant/Dining Experience]",
                 "description": "Description matching food preferences",
@@ -136,7 +135,7 @@ class AISuggestion:
                 "keyword": "dining"
             }},
             {{
-                "id": "generated-uuid-activity-4",
+                "id": "activity-day-1-4",
                 "time": "2:00 PM",
                 "title": "[Real Attraction/Activity]",
                 "description": "Activity description matching user interests and any current special events",
@@ -153,7 +152,7 @@ class AISuggestion:
 
     Generate {trip_days} days of activities. Use real place names found through web search that match the user's preferences."""
 
-    # ------------------ long-trip path ------------------
+    # long-trip path (>4 days)
     async def _handle_long_trip(self, input_data: ai_suggestion_request, trip_days: int) -> ai_suggestion_response:
         logger.info("LONG TRIP: Starting processing for %d days", trip_days)
         
@@ -202,14 +201,16 @@ class AISuggestion:
                 elif "data" in parsed and "days" in parsed["data"]:
                     days = parsed["data"]["days"]
                 elif isinstance(parsed, list):
-                    days = parsed  # Direct array of days
+                    days = parsed 
                 
                 logger.info("Worker %d successfully processed %d days", idx, len(days))
                 return idx, days
 
         tasks = [worker(chunk, i, itinerary_id) for i, chunk in enumerate(chunks)]
+
         results = await asyncio.gather(*tasks)
-        
+
+        # 4) merge preserving order
         results_sorted = sorted(results, key=lambda x: x[0])
         merged_days: List[dict] = []
         for idx, days in results_sorted:
@@ -225,7 +226,6 @@ class AISuggestion:
 
         return ai_suggestion_response(success=True, message="Itinerary generated successfully.", data=response_obj["data"])
 
-    # ------------------ prompt builders ------------------
     def create_outline_prompt(self, input_data: ai_suggestion_request, trip_days: int) -> str:
         return f"""You are a travel planner AI.
 
@@ -305,9 +305,7 @@ Return only valid JSON in this format:
 
     IMPORTANT: Return only the JSON object with the "days" array. Do not include any other text or markdown."""
 
-    # ------------------ openai call + helpers ------------------
     async def get_openai_response(self, prompt: str, data_obj: Any) -> str:
-        # data_obj may be a pydantic model with .json() or a dict
         if hasattr(data_obj, "json") and callable(getattr(data_obj, "json")):
             data_json = data_obj.json()
         else:
@@ -362,6 +360,4 @@ Return only valid JSON in this format:
                 return candidate
             except Exception:
                 pass
-
-        # Last resort: return raw so caller can log it
         return raw
