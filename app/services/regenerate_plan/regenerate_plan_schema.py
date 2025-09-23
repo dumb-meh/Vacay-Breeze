@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Dict,List,Any,Union, Optional
 class regenerate_plan_request(BaseModel):
     user_search: str
-    day_plan:List[Dict[str, str]]
+    day_plan:List[Dict[str, Any]]
     itinerary_id: str
     user_info: Dict[str, Union[str, int, List[str]]]
     

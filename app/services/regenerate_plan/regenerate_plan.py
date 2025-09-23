@@ -85,5 +85,4 @@ class RegeneratePlan:
             temperature=0.7            
         )
         raw_content = completion.choices[0].message.content.strip()
-        print(raw_content)
         return raw_content
