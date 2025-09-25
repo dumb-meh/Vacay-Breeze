@@ -144,23 +144,23 @@ curl -X POST "http://localhost:9074/regenerate_plan" \
 Vacay-Breeze/
 ├── app/
 │   ├── core/
-│   │   └── config.py                 # Application configuration
+│   │   └── config.py                
 │   └── services/
 │       ├── ai_suggestion/
-│       │   ├── ai_suggestion.py      # AI suggestion business logic
-│       │   ├── ai_suggestion_route.py # API routes
-│       │   └── ai_suggestion_schema.py # Pydantic schemas
+│       │   ├── ai_suggestion.py     
+│       │   ├── ai_suggestion_route.py 
+│       │   └── ai_suggestion_schema.py 
 │       └── regenerate_plan/
-│           ├── regenerate_plan.py    # Plan regeneration logic
-│           ├── regenerate_plan_route.py # API routes
-│           └── regenerate_plan_schema.py # Pydantic schemas
+│           ├── regenerate_plan.py   
+│           ├── regenerate_plan_route.py 
+│           └── regenerate_plan_schema.py 
 ├── nginx/
-│   └── nginx.conf                    # Nginx configuration
-├── docker-compose.yml               # Docker services configuration
-├── Dockerfile                       # Application container
-├── main.py                         # FastAPI application entry point
-├── requirements.txt                # Python dependencies
-└── README.md                      # This file
+│   └── nginx.conf                   
+├── docker-compose.yml              
+├── Dockerfile                   
+├── main.py                       
+├── requirements.txt                
+└── README.md                     
 ```
 
 ## 🛠️ Development
@@ -205,33 +205,3 @@ curl http://localhost:9074/health
 # Docker health status
 docker-compose ps
 ```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For support and questions:
-
-- 📧 Email: [support@vacaybreeze.com](mailto:support@vacaybreeze.com)
-- 🐛 Issues: [GitHub Issues](https://github.com/dumb-meh/Vacay-Breeze/issues)
-- 📖 Documentation: [API Docs](http://localhost:9074/docs)
-
-## 🙏 Acknowledgments
-
-- Built with [FastAPI](https://fastapi.tiangolo.com/)
-- AI powered by [OpenAI](https://openai.com/)
-- Containerized with [Docker](https://docker.com/)
-
----
-
-**Made with ❤️ for better travel experiences**
