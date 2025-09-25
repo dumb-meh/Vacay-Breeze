@@ -103,7 +103,6 @@ class AISuggestion:
     {{
     "success": true,
     "data": {{
-        "itinerary_id": "{itinerary_id}",
         "days": [
         {{
             "day_number": 1,
@@ -111,7 +110,6 @@ class AISuggestion:
             "date": "{input_data.departure_date}",
             "activities": [
             {{
-                "id": "activity-day-1-1",
                 "time": "9:00 AM",
                 "title": "Airport Arrival",
                 "description": "Arrive at {input_data.destination} Airport and proceed through customs and baggage claim",
@@ -119,7 +117,6 @@ class AISuggestion:
                 "keyword": "arrival"
             }},
             {{
-                "id": "activity-day-1-2", 
                 "time": "10:30 AM",
                 "title": "Hotel Check-in",
                 "description": "Check-in at [Real Hotel Name that matches amenities]",
@@ -127,7 +124,6 @@ class AISuggestion:
                 "keyword": "hotel"
             }},
             {{
-                "id": "activity-day-1-3",
                 "time": "12:00 PM", 
                 "title": "[Real Restaurant/Dining Experience]",
                 "description": "Description matching food preferences",
@@ -135,7 +131,6 @@ class AISuggestion:
                 "keyword": "dining"
             }},
             {{
-                "id": "activity-day-1-4",
                 "time": "2:00 PM",
                 "title": "[Real Attraction/Activity]",
                 "description": "Activity description matching user interests and any current special events",
@@ -220,7 +215,7 @@ class AISuggestion:
 
         response_obj = {
             "success": True,
-            "data": {"itinerary_id": itinerary_id, "days": merged_days, "status": "COMPLETED"},
+            "data": {"days": merged_days, "status": "COMPLETED"},
             "message": "Itinerary generated successfully",
         }
 
@@ -291,7 +286,6 @@ Return only valid JSON in this format:
         "date": "YYYY-MM-DD",
         "activities": [
             {{
-            "id": "activity-day-1-1",
             "time": "9:00 AM",
             "title": "Activity title",
             "description": "Brief activity description",

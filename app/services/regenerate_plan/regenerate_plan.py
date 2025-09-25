@@ -28,8 +28,6 @@ class RegeneratePlan:
     CURRENT DAY PLAN:
     {input_data.day_plan}
     
-    Itinerary ID: 
-    {input_data.itinerary_id}
 
     USER TRAVEL INFO:
     {input_data.user_info}
@@ -49,11 +47,9 @@ class RegeneratePlan:
     {{
     "success": true,
     "data": {{
-        "itinerary_id": "{input_data.itinerary_id}",
         "alternative_options": [
         {{
             "option": 1,
-            "id": "activity-day-1-6",
             "time": "9:30 AM",
             "title": "Disneyland Paris",
             "description": "Visit the magical Disneyland Paris theme park with attractions suitable for children of all ages. Wheelchair accessible rides available.",
@@ -64,7 +60,6 @@ class RegeneratePlan:
         ...................
         {{
             "option": 4,
-            "id": "activity-day-1-9",
             "time": "2:00 PM",
             "title": "Seine River Cruise",
             "description": "Enjoy a relaxing boat cruise along the Seine River, taking in iconic sights like the Eiffel Tower and Notre-Dame Cathedral. Suitable for all ages.",
