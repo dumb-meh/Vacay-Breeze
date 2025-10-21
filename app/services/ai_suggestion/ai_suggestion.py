@@ -111,8 +111,8 @@ class AISuggestion:
     {{
     "success": true,
     "data": {{
-        "itenary_title": "Short Title",
-        "itenary_category": "Cultural & Heritage",
+        "title": "Short Title",
+        "category": "Cultural & Heritage",
         "days": [
         {{
             "day_number": 1,
@@ -174,8 +174,8 @@ class AISuggestion:
             raise HTTPException(status_code=502, detail=f"LLM returned invalid outline JSON: {e}")
 
         days_outline = outline_obj.get("days", [])
-        itenary_title = outline_obj.get("itenary_title", f"Trip to {input_data.destination}")
-        itenary_category = outline_obj.get("itenary_category", "Cultural & Heritage")
+        title = outline_obj.get("title", f"Trip to {input_data.destination}")
+        category = outline_obj.get("category", "Cultural & Heritage")
         logger.info("Outline generated %d days", len(days_outline))
         
         if not days_outline:
@@ -228,8 +228,8 @@ class AISuggestion:
         response_obj = {
             "success": True,
             "data": {
-                "itenary_title": itenary_title,
-                "itenary_category": itenary_category,
+                "title": title,
+                "category": category,
                 "days": merged_days, 
                 "status": "COMPLETED"
             },
@@ -255,8 +255,8 @@ Generate a SHORT title for this itinerary using only 2-3 words that reflects the
 Return only valid JSON in this format:
 
 {{
-  "itenary_title": "Short Title",
-  "itenary_category": "Cultural & Heritage",
+  "title": "Short Title",
+  "category": "Cultural & Heritage",
   "days": [
     {{
       "day_number": 1,
