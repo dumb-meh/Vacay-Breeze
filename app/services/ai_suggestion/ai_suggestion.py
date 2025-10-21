@@ -73,10 +73,16 @@ class AISuggestion:
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"LLM returned invalid JSON: {e}")
 
+        # Extract data from the response structure
+        if "data" in parsed:
+            response_data = parsed["data"]
+        else:
+            response_data = parsed
+
         return ai_suggestion_response(
             success=True,
             message="Itinerary (short trip) generated successfully.",
-            data=parsed,
+            data=response_data,
         )
 
     def create_short_trip_prompt(self, input_data: ai_suggestion_request, trip_days: int, itinerary_id: str) -> str:
@@ -96,13 +102,17 @@ class AISuggestion:
     - Pacing: {', '.join(input_data.pacing)}
     - Special Notes: {input_data.special_note or 'None specified'}
 
-    Search the web for real places, restaurants, hotels, and current events that match these preferences.
-
+    Search the web for real places, restaurants, hotels, and current events that match these preferences. 
+    
+    Generate a SHORT title for this itinerary using only 2-3 words that reflects the trip's main theme (e.g., "Cultural Moscow", "Tokyo Adventures", "Paris Discovery"). You MUST choose exactly one category from this list based on the planned activities: "Cultural & Heritage", "Museums & Art", "Food & Culinary Experiences", "Outdoor & Nature", "Shopping & Fashion", "Leisure & Relaxation", "Family-Friendly Activities", "Accessibility-Friendly", "Local Experiences", "Historical Sites", "Photography & Scenic Spots", "Wellness & Spa", "Adventure & Outdoor Sports", "Seasonal & Festive", "Shopping & Souvenirs".
+    
     IMPORTANT: Return ONLY valid JSON, no markdown, no comments:
 
     {{
     "success": true,
     "data": {{
+        "itenary_title": "Short Title",
+        "itenary_category": "Cultural & Heritage",
         "days": [
         {{
             "day_number": 1,
@@ -164,6 +174,8 @@ class AISuggestion:
             raise HTTPException(status_code=502, detail=f"LLM returned invalid outline JSON: {e}")
 
         days_outline = outline_obj.get("days", [])
+        itenary_title = outline_obj.get("itenary_title", f"Trip to {input_data.destination}")
+        itenary_category = outline_obj.get("itenary_category", "Cultural & Heritage")
         logger.info("Outline generated %d days", len(days_outline))
         
         if not days_outline:
@@ -215,7 +227,12 @@ class AISuggestion:
 
         response_obj = {
             "success": True,
-            "data": {"days": merged_days, "status": "COMPLETED"},
+            "data": {
+                "itenary_title": itenary_title,
+                "itenary_category": itenary_category,
+                "days": merged_days, 
+                "status": "COMPLETED"
+            },
             "message": "Itinerary generated successfully",
         }
 
@@ -231,11 +248,15 @@ ONLY include this structure per day:
 - date (YYYY-MM-DD)
 - places (list of 2–4 unique attractions/activities per day, brief names only)
 
-DO NOT include full descriptions or times. Only suggest unique, culturally and logistically appropriate activities. No duplication.
+DO NOT include full descriptions or times. Only suggest unique, culturally and logistically appropriate activities. No duplication. 
+
+Generate a SHORT title for this itinerary using only 2-3 words that reflects the trip's main theme (e.g., "Cultural Moscow", "Tokyo Adventures", "Paris Discovery"). You MUST choose exactly one category from this list based on the planned activities: "Cultural & Heritage", "Museums & Art", "Food & Culinary Experiences", "Outdoor & Nature", "Shopping & Fashion", "Leisure & Relaxation", "Family-Friendly Activities", "Accessibility-Friendly", "Local Experiences", "Historical Sites", "Photography & Scenic Spots", "Wellness & Spa", "Adventure & Outdoor Sports", "Seasonal & Festive", "Shopping & Souvenirs".
 
 Return only valid JSON in this format:
 
 {{
+  "itenary_title": "Short Title",
+  "itenary_category": "Cultural & Heritage",
   "days": [
     {{
       "day_number": 1,
