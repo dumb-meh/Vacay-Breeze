@@ -91,7 +91,7 @@ class AISuggestion:
     TRAVEL DETAILS:
     - Trip Duration: {trip_days} days
     - Travelers: {input_data.total_adults} adults, {input_data.total_children} children (under 12)
-    - Destination: {input_data.destination}
+    - Destination: {input_data.destination}, {input_data.destination_state}
     - Departure Date: {input_data.departure_date}
     - Return Date: {input_data.return_date}
 
@@ -106,6 +106,39 @@ class AISuggestion:
     
     Generate a SHORT title for this itinerary using only 2-3 words that reflects the trip's main theme (e.g., "Cultural Moscow", "Tokyo Adventures", "Paris Discovery"). You MUST choose exactly one category from this list based on the planned activities: "Cultural & Heritage", "Museums & Art", "Food & Culinary Experiences", "Outdoor & Nature", "Shopping & Fashion", "Leisure & Relaxation", "Family-Friendly Activities", "Accessibility-Friendly", "Local Experiences", "Historical Sites", "Photography & Scenic Spots", "Wellness & Spa", "Adventure & Outdoor Sports", "Seasonal & Festive", "Shopping & Souvenirs".
     
+    Keywords to use for activities: [
+  "outdoor",
+  "hotel"
+  "meal",
+  "leisure",
+  "museum",
+  "cultural",
+  "adventure",
+  "nature",
+  "shopping",
+  "entertainment",
+  "romantic",
+  "water",
+  "wildlife",
+  "sports",
+  "spa",
+  "amenity_workspace",
+  "amenity_game_room",
+  "amenity_gym",
+  "amenity_pool",
+  "amenity_parking",
+  "amenity_outdoor_space",
+  "pace_relaxed",
+  "pace_balanced",
+  "pace_fast",
+  "food_casual",
+  "food_fine",
+  "food_local",
+  "food_asian",
+  "food_italian",
+  "food_mexican",
+  "service_transport"
+    ]
     IMPORTANT: Return ONLY valid JSON, no markdown, no comments:
 
     {{
@@ -138,14 +171,14 @@ class AISuggestion:
                 "title": "[Real Restaurant/Dining Experience]",
                 "description": "Description matching food preferences",
                 "place": "[Real Restaurant Name]",
-                "keyword": "dining"
+                "keyword": "meal"
             }},
             {{
                 "time": "2:00 PM",
                 "title": "[Real Attraction/Activity]",
                 "description": "Activity description matching user interests and any current special events",
                 "place": "[Real Venue Name]", 
-                "keyword": "sightseeing"
+                "keyword": "amenity_outdoor_space"
             }}
             ]
         }}

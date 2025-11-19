@@ -5,6 +5,7 @@ class ai_suggestion_request (BaseModel):
     total_adults:int
     total_children:int
     destination:str
+    destination_state:str
     location:str
     departure_date:str
     return_date:str

@@ -36,11 +36,12 @@ class RegeneratePlan:
     TRAVELERS: {input_data.user_info.get("total_adults", "N/A")} adults, {input_data.user_info.get("total_children", "N/A")} children
 
     INSTRUCTIONS:
-    1. Use web search to find activities in {input_data.user_info.get("destination", "Unknown")} that match the user's search query
-    2. Suggest ONLY NEW activities that are NOT already in their current day plan
-    3. All suggestions must be real places/activities
-    4. Consider group size when making suggestions
-    5. Generate exactly 4 alternative options
+    1.First determine which activity user want to replace based on their search query.
+    2. Use web search to find activities in {input_data.user_info.get("destination", "Unknown")} that match the user's search query
+    3. Suggest ONLY NEW activities that are NOT already in their current day plan
+    4. All suggestions must be real places/activities
+    5. Consider group size when making suggestions
+    6. Generate exactly 4 alternative options for that exact time slot
 
     OUTPUT ONLY valid JSON exactly like this example:
 
